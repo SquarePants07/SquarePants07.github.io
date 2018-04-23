@@ -1,0 +1,200 @@
+﻿<!DOCTYPE html>
+<html>
+    <head>
+        <title>2ГИС</title>
+        <script src="https://maps.api.2gis.ru/2.0/loader.js?pkg=full"></script>
+        <script src="./gisApi.js" type="text/javascript"></script>
+        <script type="text/javascript">
+        var maxPopulation = 219115;
+        var minPopulation = 54783;
+
+        var maxItems = 300;
+        var minItems = 50;
+
+        var population = {
+        "Дзержинский":166292,
+        "Индустриальный":168956,
+        "Кировский": 131204,
+        "Ленинский": 54783,
+        "Мотовилихинский": 192283,
+        "Орджоникидзевский":  115372,
+        "Свердловский": 219115
+      };
+
+            var map;
+            var areasZones = [];
+            var currentZone;
+            var currentArea;
+            var currentMarkers = []
+            var allCategories = [];
+            var currentCategory;
+
+            DG.then(function () {
+                map = DG.map('map', {
+                    center: [58.00118522243253, 56.232147216796875],
+                    zoom: 10
+                });
+
+                getAreas(onAreaReceived);
+            }
+          );
+
+          function onAreaReceived(areas){
+            var obj = JSON.parse(areas);
+            var result = obj.result;
+            var items = result.items;
+
+            for(var i in items)
+            {
+              var item = items[i]
+              areasZones[item.id] = item
+
+              var select = document.getElementById("select")
+              var option = document.createElement("option");
+              option.value = item.id
+              option.text = item.name;
+              select.add(option);
+            }
+          }
+
+          function onCategoriesReceived(categories){
+              var result = categories.result;
+              var items = result.items;
+
+                for(var i in items){
+
+                  var item = items[i]
+                  allCategories[item.id] = item
+                  select = document.getElementById("rubric")
+                  option = document.createElement("option");
+                  option.value = item.id
+                  option.text = item.name;
+                  select.add(option);
+              }
+          }
+
+
+              function onAreaChanged(){
+                if(currentZone !== null && currentZone !== undefined)
+                    currentZone.remove();
+
+                var select = document.getElementById("select")
+                var selectedValue = select.options[select.selectedIndex].value;
+                var geometry  = areasZones[selectedValue].geometry.selection;
+
+                var polygonObject = DG.Wkt.toLatLngs(geometry)
+                var polyline = DG.polygon(polygonObject, {color:'green', weight:3, opacity:0.7}).addTo(map);
+                currentZone = polyline;
+                currentArea = areasZones[selectedValue];
+                onCategoryChanged();
+              }
+
+              function onCategoryChanged(){
+                // if(currentCategory !== null && currentCategory !== undefined)
+                //     currentCategory.remove();
+
+                var select = document.getElementById("rubric")
+                var selectedValue = select.options[select.selectedIndex].value;
+                currentCategory = selectedValue
+
+
+                var categories = getCategoryItems(currentCategory, currentArea.id, 1, []);
+                categories.then(categories =>
+                  {
+                    onCategoryItemsReceived(categories);
+                  });
+
+
+              }
+
+              function onCategoryItemsReceived(categories){
+                  clearCurrentMarkers();
+                    for(var i in categories){
+                            var item = categories[i];
+                              var point = item.point
+                              var marker = DG.marker(point);
+                              marker.alt = item.id
+                              var content = "<p>Название: " + item.name + "</p> <p>Адрес: " + item.address_name + "</p>"
+                              marker.bindPopup(content).openPopup();
+
+                              currentMarkers[item.id] = marker;
+                              marker.addTo(map);
+                        }
+
+                        calculatePopulationRatio(categories.length);
+                    }
+
+              function calculatePopulationRatio(itemCount){
+                  var areaName = currentArea.name;
+                  var popupContent = "<br>" + areaName +" район </br> <p><br> Население: </br>" + population[currentArea.name] + "</p>" +
+                      "<p><br>Найдено по запросу: </br>"  + itemCount + "</p>";
+
+                      currentZone.bindPopup(popupContent).openPopup();
+
+                  if(itemCount<minItems){
+                    minItems = itemCount;
+                  }
+
+                  if(itemCount>maxItems){
+                    maxItems = itemCount;
+                  }
+
+                  var districtName = currentArea.name;
+                  var populationCurrentDistrict = population[districtName];
+                  var ratio =itemCount/ populationCurrentDistrict;
+                  var maxRatio = maxItems / minPopulation;
+                  var minRatio = minItems / maxPopulation;
+                  var difference = maxRatio - minRatio;
+                  var newRatio = (ratio - minRatio) / difference;
+
+                  var color = getRatioColor(newRatio);
+                  currentZone.setStyle({color:color});
+              }
+
+              function clearCurrentMarkers()
+              {
+                  for(var i in currentMarkers){
+                     var item = currentMarkers[i];
+                     item.remove();
+                  }
+
+              function getRatioColor(ratio){
+                  var green = Math.ceil(255 * ratio);
+                  var red = 255 - green;
+                  var blue = 0;
+                  return rgbToHex(red, green, blue);
+              }
+
+              function componentToHex(c) {
+                  var hex = c.toString(16);
+                  return hex.length == 1 ? "0" + hex : hex;
+              }
+
+              function rgbToHex(r, g, b) {
+                  return "#" + componentToHex(r) + componentToHex(g) + componentToHex(b);
+              }
+
+              }
+
+        </script>
+
+    </head>
+    <body>
+        <div><select id="select"  onChange="onAreaChanged()">
+          <option selected="true" disabled="disabled">Выберите район</option>
+             </select>
+
+             <select id="rubric" onChange="onCategoryChanged()">
+               <option value="Кафе">Кафе</option>
+               <option value="Продовольственные магазины">Продукты</option>
+               <option value="Аптека">Аптеки</option>
+               <option value="Гостиница">Гостиницы</option>
+               <option value="Университет">Университеты</option>
+               <option value="Школа">Школы</option>
+               <option value="Больница">Больницы</option>
+             </select>
+
+            </div>
+        <div id="map" style="width:1024px; height:768px; margin: 4px 0px"></div>
+    </body>
+</html>
